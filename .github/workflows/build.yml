@@ -1,0 +1,122 @@
+name: Build GflessClient
+
+# Builds the latest code (not just tagged releases) and uploads the compiled
+# binaries as downloadable artifacts. Runs on pushes to main and ci/** branches,
+# on pull requests, and on manual dispatch. Everything runs on GitHub's Windows
+# runners, so you do not need Windows/Qt/MSVC locally.
+
+on:
+  push:
+    branches: [main, "ci/**"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      helper_platform:
+        description: "Platform for GflessDLL + Injector (Win32 for 32-bit NosTale injection, x64 otherwise)"
+        required: false
+        default: "Win32"
+        type: choice
+        options:
+          - Win32
+          - x64
+
+env:
+  QT_VERSION: "6.10.1"
+  DEFAULT_HELPER_PLATFORM: "Win32"
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout (latest main)
+        uses: actions/checkout@v4
+
+      - name: Resolve helper platform
+        id: cfg
+        shell: bash
+        run: |
+          plat="${{ github.event.inputs.helper_platform }}"
+          if [ -z "$plat" ]; then plat="${DEFAULT_HELPER_PLATFORM}"; fi
+          echo "platform=$plat" >> "$GITHUB_OUTPUT"
+          echo "Helper (DLL/Injector) platform: $plat"
+
+      # --- Toolchain -------------------------------------------------------
+      - name: Install Qt ${{ env.QT_VERSION }} (MSVC 2022 64-bit) + WebEngine
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: windows
+          target: desktop
+          arch: win64_msvc2022_64
+          modules: qtwebengine qtwebchannel qtpositioning
+          cache: true
+
+      - name: Set up MSVC developer environment (x64)
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      # --- Build the main app (Launcher, qmake) ----------------------------
+      - name: Build Launcher (GflessClient.exe)
+        shell: cmd
+        working-directory: Launcher
+        run: |
+          qmake GflessClient.pro CONFIG+=release
+          nmake
+
+      - name: Deploy Qt runtime next to GflessClient.exe
+        shell: cmd
+        working-directory: Launcher
+        run: |
+          windeployqt --release --compiler-runtime bin\GflessClient.exe
+
+      # --- Build the MSVC helpers -----------------------------------------
+      - name: Build GflessDLL.dll
+        shell: cmd
+        run: |
+          msbuild GflessDLL\GflessDLL.sln /p:Configuration=Release /p:Platform=${{ steps.cfg.outputs.platform }} /m
+
+      - name: Build Injector.exe
+        shell: cmd
+        run: |
+          msbuild Injector\Injector.sln /p:Configuration=Release /p:Platform=${{ steps.cfg.outputs.platform }} /m
+
+      - name: Collect helper binaries into Launcher\bin
+        shell: pwsh
+        run: |
+          $dll = Get-ChildItem -Recurse -Filter GflessDLL.dll -Path GflessDLL | Select-Object -First 1
+          $inj = Get-ChildItem -Recurse -Filter Injector.exe  -Path Injector  | Select-Object -First 1
+          if ($dll) { Copy-Item $dll.FullName Launcher\bin\ -Force; Write-Host "Copied $($dll.FullName)" }
+          else { Write-Warning "GflessDLL.dll not found" }
+          if ($inj) { Copy-Item $inj.FullName Launcher\bin\ -Force; Write-Host "Copied $($inj.FullName)" }
+          else { Write-Warning "Injector.exe not found" }
+
+      # --- Optional installer (best-effort; .iss has hardcoded paths) ------
+      - name: Build Inno Setup installer (optional)
+        id: installer
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress -y
+          $binFull = (Resolve-Path Launcher\bin).Path
+          & "iscc" "/DAppSourceDir=$binFull" "Installer\installer.iss"
+
+      # --- Publish artifacts ----------------------------------------------
+      - name: Upload GflessClient (app + Qt runtime)
+        uses: actions/upload-artifact@v4
+        with:
+          name: GflessClient-app
+          path: Launcher/bin/**
+          if-no-files-found: error
+
+      - name: Upload installer (if it built)
+        if: steps.installer.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: GflessClient-installer
+          path: |
+            Installer/**/*.exe
+            **/gflessclient_setup*.exe
+          if-no-files-found: ignore
