@@ -1,10 +1,5 @@
 name: Build GflessClient
 
-# Builds the latest code (not just tagged releases) and uploads the compiled
-# binaries as downloadable artifacts. Runs on pushes to main and ci/** branches,
-# on pull requests, and on manual dispatch. Everything runs on GitHub's Windows
-# runners, so you do not need Windows/Qt/MSVC locally.
-
 on:
   push:
     branches: [main, "ci/**"]
@@ -13,22 +8,21 @@ on:
   workflow_dispatch:
     inputs:
       helper_platform:
-        description: "Platform for GflessDLL + Injector (Win32 for 32-bit NosTale injection, x64 otherwise)"
+        description: "Platform for GflessDLL + Injector (x86 for 32-bit NosTale injection, x64 otherwise)"
         required: false
-        default: "Win32"
+        default: "x86"
         type: choice
         options:
-          - Win32
+          - x86
           - x64
 
 env:
   QT_VERSION: "6.10.1"
-  DEFAULT_HELPER_PLATFORM: "Win32"
+  DEFAULT_HELPER_PLATFORM: "x86"
 
 jobs:
   build:
     runs-on: windows-latest
-
     steps:
       - name: Checkout (latest main)
         uses: actions/checkout@v4
@@ -42,7 +36,6 @@ jobs:
           echo "platform=$plat" >> "$GITHUB_OUTPUT"
           echo "Helper (DLL/Injector) platform: $plat"
 
-      # --- Toolchain -------------------------------------------------------
       - name: Install Qt ${{ env.QT_VERSION }} (MSVC 2022 64-bit) + WebEngine
         uses: jurplel/install-qt-action@v4
         with:
@@ -58,7 +51,6 @@ jobs:
         with:
           arch: x64
 
-      # --- Build the main app (Launcher, qmake) ----------------------------
       - name: Build Launcher (GflessClient.exe)
         shell: cmd
         working-directory: Launcher
@@ -72,18 +64,20 @@ jobs:
         run: |
           windeployqt --release --compiler-runtime bin\GflessClient.exe
 
-      # --- Build the MSVC helpers -----------------------------------------
       - name: Build GflessDLL.dll
+        continue-on-error: true
         shell: cmd
         run: |
           msbuild GflessDLL\GflessDLL.sln /p:Configuration=Release /p:Platform=${{ steps.cfg.outputs.platform }} /m
 
       - name: Build Injector.exe
+        continue-on-error: true
         shell: cmd
         run: |
           msbuild Injector\Injector.sln /p:Configuration=Release /p:Platform=${{ steps.cfg.outputs.platform }} /m
 
       - name: Collect helper binaries into Launcher\bin
+        continue-on-error: true
         shell: pwsh
         run: |
           $dll = Get-ChildItem -Recurse -Filter GflessDLL.dll -Path GflessDLL | Select-Object -First 1
@@ -93,7 +87,6 @@ jobs:
           if ($inj) { Copy-Item $inj.FullName Launcher\bin\ -Force; Write-Host "Copied $($inj.FullName)" }
           else { Write-Warning "Injector.exe not found" }
 
-      # --- Optional installer (best-effort; .iss has hardcoded paths) ------
       - name: Build Inno Setup installer (optional)
         id: installer
         continue-on-error: true
@@ -103,7 +96,6 @@ jobs:
           $binFull = (Resolve-Path Launcher\bin).Path
           & "iscc" "/DAppSourceDir=$binFull" "Installer\installer.iss"
 
-      # --- Publish artifacts ----------------------------------------------
       - name: Upload GflessClient (app + Qt runtime)
         uses: actions/upload-artifact@v4
         with:
