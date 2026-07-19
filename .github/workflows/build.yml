@@ -1,0 +1,160 @@
+name: Build GflessClient
+
+on:
+  push:
+    branches: [main, "ci/**"]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+    inputs:
+      helper_platform:
+        description: "Platform for GflessDLL + Injector (x86 for 32-bit NosTale injection, x64 otherwise)"
+        required: false
+        default: "x86"
+        type: choice
+        options:
+          - x86
+          - x64
+
+env:
+  QT_VERSION: "6.10.1"
+  DEFAULT_HELPER_PLATFORM: "x86"
+  UPSTREAM: "hatz2/GflessClient"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Decide what to build
+        id: src
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "repo=${{ github.repository }}" >> "$GITHUB_OUTPUT"
+            echo "ref=${{ github.ref_name }}"     >> "$GITHUB_OUTPUT"
+          else
+            echo "repo=${UPSTREAM}" >> "$GITHUB_OUTPUT"
+            echo "ref=main"         >> "$GITHUB_OUTPUT"
+          fi
+          plat="${{ github.event.inputs.helper_platform }}"
+          if [ -z "$plat" ]; then plat="${DEFAULT_HELPER_PLATFORM}"; fi
+          echo "platform=$plat" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.src.outputs.repo }}
+          ref: ${{ steps.src.outputs.ref }}
+
+      - name: Capture build metadata
+        id: meta
+        shell: bash
+        run: |
+          echo "sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          echo "date=$(date -u +%Y%m%d-%H%M)"      >> "$GITHUB_OUTPUT"
+
+      - name: Install Qt ${{ env.QT_VERSION }} (MSVC 2022 64-bit) + WebEngine
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: windows
+          target: desktop
+          arch: win64_msvc2022_64
+          modules: qtwebengine qtwebchannel qtpositioning
+          cache: true
+
+      - name: Set up MSVC developer environment (x64)
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Build Launcher (GflessClient.exe)
+        shell: cmd
+        working-directory: Launcher
+        run: |
+          qmake GflessClient.pro CONFIG+=release
+          nmake
+
+      - name: Deploy Qt runtime next to GflessClient.exe
+        shell: cmd
+        working-directory: Launcher
+        run: |
+          windeployqt --release --compiler-runtime bin\GflessClient.exe
+
+      - name: Build GflessDLL.dll
+        continue-on-error: true
+        shell: cmd
+        run: |
+          msbuild GflessDLL\GflessDLL.sln /p:Configuration=Release /p:Platform=${{ steps.src.outputs.platform }} /m
+
+      - name: Build Injector.exe
+        continue-on-error: true
+        shell: cmd
+        run: |
+          msbuild Injector\Injector.sln /p:Configuration=Release /p:Platform=${{ steps.src.outputs.platform }} /m
+
+      - name: Collect helper binaries into Launcher\bin
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $dll = Get-ChildItem -Recurse -Filter GflessDLL.dll -Path GflessDLL | Select-Object -First 1
+          $inj = Get-ChildItem -Recurse -Filter Injector.exe  -Path Injector  | Select-Object -First 1
+          if ($dll) { Copy-Item $dll.FullName Launcher\bin\ -Force; Write-Host "Copied $($dll.FullName)" }
+          if ($inj) { Copy-Item $inj.FullName Launcher\bin\ -Force; Write-Host "Copied $($inj.FullName)" }
+
+      - name: Upload GflessClient (app folder)
+        uses: actions/upload-artifact@v4
+        with:
+          name: GflessClient-app
+          path: Launcher/bin/**
+          if-no-files-found: error
+
+      - name: Build Inno Setup installer (gflessclient_setup.exe)
+        id: installer
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress -y
+          $root = (Get-Location).Path
+          $iss  = "Installer\installer.iss"
+          $c = Get-Content $iss -Raw
+          $c = $c -replace 'Launcher\\build\\Desktop_Qt_[^\\]+\\bin', 'Launcher\bin'
+          $c = $c.Replace('C:\Users\root\Github\GflessClient', $root)
+          Set-Content $iss $c
+          Write-Host "=== patched installer paths ==="
+          (Select-String -Path $iss -Pattern 'OutputDir|SetupIconFile|Source:').Line
+          & iscc $iss
+          if (-not (Test-Path "Installer\gflessclient_setup.exe")) { throw "installer not produced" }
+
+      - name: Upload installer artifact
+        if: steps.installer.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: GflessClient-installer
+          path: Installer/gflessclient_setup.exe
+          if-no-files-found: error
+
+      - name: Publish release
+        if: steps.installer.outcome == 'success' && github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          tag="build-${{ steps.meta.outputs.date }}-${{ steps.meta.outputs.sha }}"
+          gh release create "$tag" "Installer/gflessclient_setup.exe" \
+            --repo "${{ github.repository }}" \
+            --title "GflessClient build ${{ steps.meta.outputs.date }}" \
+            --notes "Automated build of ${UPSTREAM}@${{ steps.meta.outputs.sha }} by GitHub Actions. Asset matches the upstream release (Inno Setup installer)."
+
+      - name: Sync fork main from upstream
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh api -X POST "repos/${{ github.repository }}/merge-upstream" -f branch=main || true

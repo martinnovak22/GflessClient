@@ -44,8 +44,6 @@ public:
 
     QString getcustomClientPath() const;
 
-    void refreshIdentity();
-
 private:
     QString email;
     QString password;
