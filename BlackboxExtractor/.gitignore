@@ -1,8 +1,0 @@
-build/
-dist/
-*.spec
-.venv/
-.venb/
-__pycache__/
-node_modules/
-.vscode

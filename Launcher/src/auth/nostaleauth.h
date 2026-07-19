@@ -50,8 +50,6 @@ public:
 
     QString getInstallationId() const;
 
-    void refreshIdentity();
-
     void setToken(const QString &newToken);
     QString getToken() const;
 
