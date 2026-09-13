@@ -19,7 +19,7 @@ on:
           - x64
 
 env:
-  QT_VERSION: "6.11.0"
+  QT_VERSION: "6.10.1"
   DEFAULT_HELPER_PLATFORM: "x86"
   UPSTREAM: "hatz2/GflessClient"
 
