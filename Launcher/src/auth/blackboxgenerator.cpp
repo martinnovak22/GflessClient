@@ -45,36 +45,35 @@ QString BlackboxGenerator::generate(const QString &gsid, const QString &installa
     QEventLoop loop;
     QString result;
 
-    BlackboxGenerator *generator = getInstance();
-
-    if (generator->page->isLoading())
+    if (BlackboxGenerator::getInstance()->page->isLoading())
         return {};
 
-    connect(generator, &BlackboxGenerator::blackboxCreated, &loop, [&](const QString& blackbox) {
+    connect(getInstance(), &BlackboxGenerator::blackboxCreated, &loop, [&](const QString& blackbox) {
         result = blackbox;
         loop.quit();
     });
 
     if (gsid.isEmpty() && installationId.isEmpty()) {
-        connect(generator->page, &QWebEnginePage::loadFinished, generator, [&](bool ok) {
+        connect(getInstance()->page, &QWebEnginePage::loadFinished, getInstance(), [&](bool ok) {
             if (ok)
-                generator->page->runJavaScript("game1(callbackHandler.callback)");
+                BlackboxGenerator::getInstance()->page->runJavaScript("game1(callbackHandler.callback)");
         });
 
-        generator->page->runJavaScript("game1(callbackHandler.callback)");
+        BlackboxGenerator::getInstance()->page->runJavaScript("game1(callbackHandler.callback)");
     }
     else {
         QJsonObject request = createRequest(gsid, installationId);
-        QString script = QString("game1(callbackHandler.callback, %1)").arg(QString::fromUtf8(QJsonDocument(request).toJson()));
+        QString script = QString("game1(callbackHandler.callback, %1)").arg(QJsonDocument(request).toJson());
 
-        connect(generator->page, &QWebEnginePage::loadFinished, generator, [&](bool ok) {
+        connect(getInstance()->page, &QWebEnginePage::loadFinished, getInstance(), [&](bool ok) {
             if (ok)
-                generator->page->runJavaScript(script);
+                BlackboxGenerator::getInstance()->page->runJavaScript(script);
         });
 
-        generator->page->runJavaScript(script);
+        BlackboxGenerator::getInstance()->page->runJavaScript(script);
     }
 
+    //QTimer::singleShot(10000, &loop, &QEventLoop::quit);
     loop.exec();
     return result;
 }
@@ -86,9 +85,9 @@ QByteArray BlackboxGenerator::encrypt(const QByteArray &blackbox, const QString 
 
     key = QCryptographicHash::hash(key, QCryptographicHash::Sha512).toHex();
 
-    for (int i = 0; i < blackbox.size(); ++i)
+    for (size_t i = 0; i < blackbox.size(); ++i)
     {
-        int key_index = i % key.size();
+        size_t key_index = i % key.size();
         encrypted[i] = blackbox[i] ^ key[key_index] ^ key[key.size() - key_index - 1];
     }
 

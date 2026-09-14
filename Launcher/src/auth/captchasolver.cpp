@@ -10,28 +10,6 @@ CaptchaSolver::CaptchaSolver(const QString &challengeId, const QString &lang, Sy
 
 }
 
-QJsonObject CaptchaSolver::getCaptchaInfo(const QString &challengeId, SyncNetworAccesskManager *netManager)
-{
-    QNetworkRequest request(QUrl("https://challenge.gameforge.com/challenge/" + challengeId));
-    QNetworkReply* reply = nullptr;
-
-    request.setRawHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/72.0.3626.121 Safari/537.36");
-
-    reply = netManager->get(request);
-    reply->deleteLater();
-
-    QByteArray response = reply->readAll();
-
-    QJsonObject jsonResponse = QJsonDocument::fromJson(response).object();
-
-    qDebug() << jsonResponse;
-
-    if (reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() != 200)
-        return {};
-
-    return jsonResponse;
-}
-
 bool CaptchaSolver::getChallenge()
 {
     QNetworkRequest request(QUrl("https://image-drop-challenge.gameforge.com/challenge/" + gfChallengeId + "/" + language));

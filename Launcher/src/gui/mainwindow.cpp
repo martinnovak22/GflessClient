@@ -7,7 +7,6 @@
 #include "editmultipleprofileaccountsdialog.h"
 #include "gameupdatedialog.h"
 #include "creategameaccountdialog.h"
-#include "otpdialog.h"
 #include <QQueue>
 #include "ui_mainwindow.h"
 
@@ -52,8 +51,8 @@ void MainWindow::loadSettings()
     settingsDialog->setProfilesPath(settings.value("profiles path").toString());
     settingsDialog->setOpenInterval(settings.value("open interval", 10).toInt());
     settingsDialog->setGameLanguage(settings.value("game language", 0).toInt());
-    settingsDialog->setTheme(settings.value("theme", ThemeDefault).toInt());
-    settingsDialog->setThemeComboBox(settings.value("theme", ThemeDefault).toInt());
+    settingsDialog->setTheme(settings.value("theme", 0).toInt());
+    settingsDialog->setThemeComboBox(settings.value("theme", 0).toInt());
     settingsDialog->setDisabledNosmall(settings.value("disable_nosmall", false).toBool());
     settingsDialog->setCheckUpdates(settings.value("check_updates", true).toBool());
 
@@ -241,7 +240,7 @@ void MainWindow::saveAccountProfiles(const QString &path)
     settings.endGroup();
 }
 
-void MainWindow::addGameforgeAccount(const QString &email, const QString &password, const QString& identityPath, const QString &installationId, const QString &customClientPath, const QString &proxyIp, const QString &socksPort, const QString &proxyUsername, const QString &proxyPassword, const bool useProxy, const QString &otpCode)
+void MainWindow::addGameforgeAccount(const QString &email, const QString &password, const QString& identityPath, const QString &installationId, const QString &customClientPath, const QString &proxyIp, const QString &socksPort, const QString &proxyUsername, const QString &proxyPassword, const bool useProxy)
 {
     bool captcha = false;
     bool wrongCredentials = false;
@@ -260,48 +259,13 @@ void MainWindow::addGameforgeAccount(const QString &email, const QString &passwo
         this
     );
 
-    if (!otpCode.isEmpty()) {
-        gfAcc->setOtpCode(otpCode);
-    }
-
     if (!gfAcc->authenticate(captcha, gfChallengeId, wrongCredentials)) {
         if (captcha) {
-            SyncNetworAccesskManager* netManager = gfAcc->getAuth()->getNetworkManager();
-
-            QJsonObject captchaInfo = CaptchaSolver::getCaptchaInfo(gfChallengeId, netManager);
-            QString type = captchaInfo.value("type").toString();
-            QString script = captchaInfo.value("script").toString();
-
-            if (type == "gf-image-drop-captcha") {
-                CaptchaDialog captcha(gfChallengeId, netManager, this);
-                int res = captcha.exec();
-
-                if (res == QDialog::Accepted) {
-                    addGameforgeAccount(email, password, identityPath, installationId, customClientPath, proxyIp, socksPort, proxyUsername, proxyPassword, useProxy);
-                }
-            }
-            else if (type == "gf-pow-captcha") {
-                QMessageBox::warning(
-                    this,
-                    "Unsupported type of captcha",
-                    "The type of captcha you received is not supported\nYou need to resolve it using the gameforge client or your browser."
-                );
-            }
-            else {
-                QMessageBox::critical(
-                    this,
-                    "Unsupported type of captcha",
-                    "Unsupported type of captcha\n\nType: " + type + "\nScript: " + script
-                        + "\n\nYou need to resolve it using the gameforge client or your browser."
-                );
-            }
-        }
-        else if (gfAcc->getOtpRequired()) {
-            OtpDialog otpDialog(this);
-            int res = otpDialog.exec();
+            CaptchaDialog captcha(gfChallengeId, gfAcc->getAuth()->getNetworkManager(), this);
+            int res = captcha.exec();
 
             if (res == QDialog::Accepted) {
-                addGameforgeAccount(email, password, identityPath, installationId, customClientPath, proxyIp, socksPort, proxyUsername, proxyPassword, useProxy, otpDialog.getOtpCode());
+                addGameforgeAccount(email, password, identityPath, installationId, customClientPath, proxyIp, socksPort, proxyUsername, proxyPassword, useProxy);
             }
         }
         else if (wrongCredentials) {
@@ -829,11 +793,7 @@ void MainWindow::on_actionSave_profiles_triggered()
 void MainWindow::on_actionIdentity_generator_triggered()
 {
     IdentityDialog dialog(this);
-    if (dialog.exec() == QDialog::Accepted) {
-        for (auto* acc : gfAccounts) {
-            acc->refreshIdentity();
-        }
-    }
+    dialog.exec();
 }
 
 

@@ -2,8 +2,8 @@
 #define BLACKBOXGENERATOR_H
 
 #include <QObject>
-#include <QtWebEngineCore/QWebEnginePage>
-#include <QtWebChannel/QWebChannel>
+#include <QWebEnginePage>
+#include <QWebChannel>
 #include <QJsonObject>
 
 

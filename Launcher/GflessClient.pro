@@ -1,8 +1,8 @@
-!versionAtLeast(QT_VERSION, 6.11.0): error("Gfless Client requires Qt 6.11 or newer")
+QT       += core gui network webenginecore
 
-QT       += core gui network webenginecore webchannel widgets
+greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
-CONFIG += c++20
+CONFIG += c++11
 
 RC_ICONS = resources/gfless_icon.ico
 
@@ -10,7 +10,7 @@ QMAKE_LFLAGS_WINDOWS += "/MANIFESTUAC:\"level='requireAdministrator' uiAccess='f
 
 LIBS += -lkernel32 -luser32 -lgdi32
 
-VERSION = 1.1.3
+VERSION = 1.1.0
 DEFINES += APP_VERSION=\\\"$$VERSION\\\"
 
 INCLUDEPATH += ./src ./src/gui ./src/auth
@@ -40,7 +40,6 @@ SOURCES += \
     src/gui/editmultipleprofileaccountsdialog.cpp \
     src/gui/gameupdatedialog.cpp \
     src/gui/identitydialog.cpp \
-    src/gui/otpdialog.cpp \
     src/auth/nostaleauth.cpp \
     src/profile.cpp \
     src/gui/settingsdialog.cpp \
@@ -66,7 +65,6 @@ HEADERS += \
     src/gui/editmultipleprofileaccountsdialog.h \
     src/gui/gameupdatedialog.h \
     src/gui/identitydialog.h \
-    src/gui/otpdialog.h \
     src/gui/mainwindow.h \
     src/auth/nostaleauth.h \
     src/processchecker.h \
@@ -83,7 +81,6 @@ FORMS += \
     src/gui/editmultipleprofileaccountsdialog.ui \
     src/gui/gameupdatedialog.ui \
     src/gui/identitydialog.ui \
-    src/gui/otpdialog.ui \
     src/gui/mainwindow.ui \
     src/gui/settingsdialog.ui
 

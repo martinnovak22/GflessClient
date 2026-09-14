@@ -17,9 +17,6 @@ public:
     QNetworkReply* get(const QNetworkRequest& request);
 
     QNetworkReply* sendCustomRequest(const QNetworkRequest &request, const QByteArray &verb, QIODevice *data = nullptr);
-
-private:
-    void handleReplyError(QNetworkReply* reply);
 };
 
 #endif // SYNCNETWORKACCESSMANAGER_H
