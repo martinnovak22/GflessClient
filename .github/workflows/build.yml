@@ -78,6 +78,7 @@ jobs:
           target: desktop
           arch: win64_msvc2022_64
           modules: qtwebengine qtwebchannel qtpositioning
+          extra: --base https://download.qt.io
           cache: true
 
       - name: Set up MSVC developer environment (x64)
